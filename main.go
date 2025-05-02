@@ -1,118 +1,62 @@
 package main
 
 import (
+	"context"
 	"net/http"
-	"strconv"
+	"os"
+	"os/signal"
+	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+
+	"serv/handlers"
 )
 
-type Message struct {
-	ID   int    `json:"id"`
-	Text string `json:"text"`
-}
-
-type Response struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-var messages = make(map[int]Message)
-var nextID = 1
-
-func GetHandler(c echo.Context) error {
-	var messageMap []Message
-	for _, msg := range messages {
-		messageMap = append(messageMap, msg)
+func customLoggerConfig() middleware.LoggerConfig {
+	return middleware.LoggerConfig{
+		Format: `${time_rfc3339} ${method} ${uri} - ${status} (${latency_human})` + "\n",
+		Output: os.Stdout,
 	}
-	return c.JSON(http.StatusOK, &messages)
-}
-
-func PostHandler(c echo.Context) error {
-	var message Message
-	// Bind переводит Json в сообщение
-	if err := c.Bind(&message); err != nil {
-		return c.JSON(http.StatusBadRequest, Response{
-			Status:  "Error",
-			Message: "Не смогли добавить сообщение",
-		})
-	}
-	message.ID = nextID
-	nextID++
-
-	messages[message.ID] = message
-	return c.JSON(http.StatusOK, Response{
-		Status:  "Dobavil",
-		Message: "Message dobavlen",
-	})
-}
-
-func DeleteHandler(c echo.Context) error {
-	idParam := c.Param("id")
-	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, Response{
-			Status:  "Error",
-			Message: "Не верный айди",
-		})
-	}
-	if _, i := messages[id]; !i {
-		return c.JSON(http.StatusBadRequest, Response{
-			Status:  "Error",
-			Message: "Нет сообщения",
-		})
-	}
-	delete(messages, id)
-	return c.JSON(http.StatusOK, Response{
-		Status:  "Success",
-		Message: "Сообщение удалено",
-	})
-}
-
-func PatchHandler(c echo.Context) error {
-
-	idParam := c.Param("id")
-	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, Response{
-			Status:  "Error",
-			Message: "Не верный айди",
-		})
-	}
-
-	var updateMessage Message
-	// Bind переводит Json в сообщение
-	if err := c.Bind(&updateMessage); err != nil {
-		return c.JSON(http.StatusBadRequest, Response{
-			Status:  "Error",
-			Message: "Не смогли обновить сообщение",
-		})
-	}
-
-	if _, i := messages[id]; !i {
-		return c.JSON(http.StatusBadRequest, Response{
-			Status:  "Error",
-			Message: "Нет сообщения",
-		})
-	}
-
-	updateMessage.ID = id
-	messages[id] = updateMessage
-
-	return c.JSON(http.StatusOK, Response{
-		Status:  "Success",
-		Message: "Сообщение обновлено",
-	})
 }
 
 func main() {
-
 	e := echo.New()
-	e.GET("/messages", GetHandler)
-	e.POST("/messages", PostHandler)
-	e.DELETE("/messages/:id", DeleteHandler)
-	e.PATCH("/messages/:id", PatchHandler)
 
-	e.Start("localhost:8080")
+	// Инициализация валидатора
+	e.Validator = &handlers.CustomValidator{Validator: validator.New()}
 
+	// Минималистичное логирование
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Format: `${time_rfc3339} ${method} ${uri} [${status}] (${latency})` + "\n",
+	}))
+
+	// Базовые middleware
+	e.Use(middleware.Recover())
+
+	// Роуты
+	e.GET("/messages", handlers.GetHandler)
+	e.POST("/messages", handlers.PostHandler)
+	e.DELETE("/messages/:id", handlers.DeleteHandler)
+	e.PATCH("/messages/:id", handlers.PatchHandler)
+
+	// Запуск сервера
+	go func() {
+		if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal("Server failed: ", err)
+		}
+	}()
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Print("Shutdown error: ", err)
+	}
 }
