@@ -24,18 +24,16 @@ func customLoggerConfig() middleware.LoggerConfig {
 func main() {
 	e := echo.New()
 
-	// Инициализация валидатора
+	//Инициализация валидатора
 	e.Validator = &handlers.CustomValidator{Validator: validator.New()}
 
-	// Минималистичное логирование
+	//логирование
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: `${time_rfc3339} ${method} ${uri} [${status}] (${latency})` + "\n",
+		Format: `${time_rfc3339} ${method} ${uri} status: ${status}` + "\n",
 	}))
 
-	// Базовые middleware
 	e.Use(middleware.Recover())
 
-	// Роуты
 	e.GET("/messages", handlers.GetHandler)
 	e.POST("/messages", handlers.PostHandler)
 	e.DELETE("/messages/:id", handlers.DeleteHandler)
@@ -48,7 +46,6 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
