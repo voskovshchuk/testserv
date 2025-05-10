@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,14 +14,9 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"serv/handlers"
-)
 
-func customLoggerConfig() middleware.LoggerConfig {
-	return middleware.LoggerConfig{
-		Format: `${time_rfc3339} ${method} ${uri} - ${status} (${latency_human})` + "\n",
-		Output: os.Stdout,
-	}
-}
+	"github.com/jackc/pgx/v5"
+)
 
 func main() {
 	e := echo.New()
@@ -39,6 +36,25 @@ func main() {
 	e.DELETE("/messages/:id", handlers.DeleteHandler)
 	e.PATCH("/messages/:id", handlers.PatchHandler)
 
+	// соединение с бд
+	connStr := "postgres://postgres:12345@127.0.0.1:5438/postgres"
+
+	conn, err := pgx.Connect(context.Background(), connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close(context.Background())
+
+	// Проверка соединения
+	err = conn.Ping(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Connected to PostgreSQL!")
+
+	handlers.SetDB(conn)
+
 	// Запуск сервера
 	go func() {
 		if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
@@ -56,4 +72,5 @@ func main() {
 	if err := e.Shutdown(ctx); err != nil {
 		e.Logger.Print("Shutdown error: ", err)
 	}
+
 }

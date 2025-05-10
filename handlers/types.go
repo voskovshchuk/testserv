@@ -1,15 +1,21 @@
 package handlers
 
-import "github.com/go-playground/validator/v10"
+import (
+	"time"
+
+	"github.com/go-playground/validator/v10"
+)
 
 type Message struct {
-	ID   int    `json:"id"`
-	Text string `json:"text" validate:"required,min=3,max=500"`
+	ID        int       `json:"id" db:"id"`
+	Text      string    `json:"text" validate:"required,min=3,max=500" db:"text"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 type Response struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
+	Status  string      `json:"status"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 type CustomValidator struct {
